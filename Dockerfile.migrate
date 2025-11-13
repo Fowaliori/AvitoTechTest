@@ -1,0 +1,14 @@
+# Dockerfile для запуска миграций
+FROM golang:1.23-alpine
+
+# Установка goose
+RUN go install github.com/pressly/goose/v3/cmd/goose@latest
+
+WORKDIR /app
+
+# Копируем только файлы миграций
+COPY internal/db/migrate ./internal/db/migrate
+
+# Запускаем миграции (используем shell форму для подстановки переменных)
+ENTRYPOINT goose -dir internal/db/migrate postgres "$DATABASE_URL" up
+

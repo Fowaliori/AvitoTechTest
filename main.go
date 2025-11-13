@@ -6,10 +6,16 @@ import (
 	"draft/internal/service"
 	"log"
 	"net/http"
+	"os"
 )
 
 func main() {
-	storage, err := db.NewStorage("postgres://postgres:123@localhost:5433/avitotech?sslmode=disable")
+	dbConnStr := os.Getenv("DATABASE_URL")
+	if dbConnStr == "" {
+		log.Fatal("пустой DATABASE_URL")
+	}
+
+	storage, err := db.NewStorage(dbConnStr)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -18,6 +24,12 @@ func main() {
 	server := api.NewServer(svc)
 
 	handler := api.Handler(server)
-	log.Println("Server listening on :8080")
-	log.Fatal(http.ListenAndServe(":8080", handler))
+
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+
+	log.Printf("Server listening on :%s", port)
+	log.Fatal(http.ListenAndServe(":"+port, handler))
 }

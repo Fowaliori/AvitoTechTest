@@ -12,8 +12,7 @@ generate: install-generator
 install-generator:
 	@CGO_ENABLED=0 GOOS=$(shell go env GOOS) GOARCH=$(shell go env GOARCH) go install github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@latest
 
-init-db:
-	psql -U postgres -h localhost -p 5433 -c "CREATE DATABASE avitotech;" postgres
-	goose -dir internal/db/migrate postgres "postgres://postgres:123@localhost:5433/avitotech?sslmode=disable" up
+run:
+	@docker-compose up -d
 
 .PHONY: all generate install-generator

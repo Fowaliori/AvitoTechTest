@@ -1,7 +1,7 @@
 services:
-  postgres:
+  db:
     image: postgres:16
-    container_name: postgres
+    container_name: db
     restart: always
     environment:
       POSTGRES_USER: postgres
@@ -10,7 +10,51 @@ services:
     ports:
       - "5433:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - db_data:/var/lib/postgresql/data
+    networks:
+      - avitotech-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile.migrate
+    container_name: avitotech-migrate
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://postgres:123@db:5432/avitotech?sslmode=disable
+    networks:
+      - avitotech-network
+    restart: "no"
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: avitotech-app
+    restart: always
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      DATABASE_URL: postgres://postgres:123@db:5432/avitotech?sslmode=disable
+      PORT: 8080
+    ports:
+      - "8080:8080"
+    networks:
+      - avitotech-network
 
 volumes:
-  postgres_data:
+  db_data:
+
+networks:
+  avitotech-network:
+    driver: bridge
