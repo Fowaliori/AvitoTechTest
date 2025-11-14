@@ -3,6 +3,7 @@ package db
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"pr-reviewer/internal/models"
 
@@ -31,10 +32,14 @@ func NewStorage(connString string) (*Storage, error) {
 
 // ---------- Team ----------
 
-func (s *Storage) TeamExists(name string) bool {
+func (s *Storage) TeamExists(name string) (bool, error) {
 	var exists bool
-	_ = s.db.QueryRow(`SELECT EXISTS(SELECT 1 FROM teams WHERE team_name=$1)`, name).Scan(&exists)
-	return exists
+	err := s.db.QueryRow(`SELECT EXISTS(SELECT 1 FROM teams WHERE team_name=$1)`, name).Scan(&exists)
+
+	if err != nil {
+		return false, fmt.Errorf("ошибка при проверке существования команды: %w", err)
+	}
+	return exists, nil
 }
 
 func (s *Storage) SaveTeam(team *models.Team) {
@@ -62,34 +67,40 @@ func (s *Storage) SaveTeam(team *models.Team) {
 	}
 }
 
-func (s *Storage) GetTeam(name string) (*models.Team, bool) {
+func (s *Storage) GetTeam(name string) (*models.Team, error) {
 	rows, err := s.db.Query(`SELECT user_id, username, is_active FROM users WHERE team_name=$1`, name)
 	if err != nil {
-		return nil, false
+		return nil, err
 	}
 	defer rows.Close()
 
 	var members []models.TeamMember
 	for rows.Next() {
 		var m models.TeamMember
-		_ = rows.Scan(&m.UserId, &m.Username, &m.IsActive)
+		if err := rows.Scan(&m.UserId, &m.Username, &m.IsActive); err != nil {
+			return nil, fmt.Errorf("ошибка при сканировании участника %w", err)
+		}
 		members = append(members, m)
 	}
 
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("ошибка при чтении строк: %w", err)
+	}
+
 	if len(members) == 0 {
-		return nil, false
+		return nil, fmt.Errorf("в команде %s нет участников", name)
 	}
 
 	return &models.Team{
 		TeamName: name,
 		Members:  members,
-	}, true
+	}, nil
 }
 
 // ---------- Users ----------
 
-func (s *Storage) SaveUser(user *models.User) {
-	_, _ = s.db.Exec(`
+func (s *Storage) SaveUser(user *models.User) error {
+	_, err := s.db.Exec(`
 		INSERT INTO users (user_id, username, team_name, is_active)
 		VALUES ($1, $2, $3, $4)
 		ON CONFLICT (user_id) DO UPDATE SET
@@ -98,23 +109,41 @@ func (s *Storage) SaveUser(user *models.User) {
 			is_active=EXCLUDED.is_active`,
 		user.UserId, user.Username, user.TeamName, user.IsActive,
 	)
+
+	if err != nil {
+		return fmt.Errorf("ошибка при сохранении пользователя: %w", err)
+	}
+	return nil
 }
 
-func (s *Storage) GetUser(id string) (*models.User, bool) {
-	row := s.db.QueryRow(`SELECT user_id, username, team_name, is_active FROM users WHERE user_id=$1`, id)
+func (s *Storage) GetUser(id string) (*models.User, error) {
+	row := s.db.QueryRow(
+		`SELECT user_id, username, team_name, is_active FROM users WHERE user_id=$1`,
+		id,
+	)
+
 	var u models.User
-	if err := row.Scan(&u.UserId, &u.Username, &u.TeamName, &u.IsActive); err != nil {
-		return nil, false
+	err := row.Scan(&u.UserId, &u.Username, &u.TeamName, &u.IsActive)
+
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, fmt.Errorf("пользователь %s не найден", id)
+		}
+		return nil, fmt.Errorf("ошибка при получении пользователя: %w", err)
 	}
-	return &u, true
+
+	return &u, nil
 }
 
 // ---------- Pull Requests ----------
 
-func (s *Storage) PullRequestExists(id string) bool {
+func (s *Storage) PullRequestExists(id string) (bool, error) {
 	var exists bool
-	_ = s.db.QueryRow(`SELECT EXISTS(SELECT 1 FROM pull_requests WHERE pull_request_id=$1)`, id).Scan(&exists)
-	return exists
+	err := s.db.QueryRow(`SELECT EXISTS(SELECT 1 FROM pull_requests WHERE pull_request_id=$1)`, id).Scan(&exists)
+	if err != nil {
+		return false, fmt.Errorf("ошибка при проверке существования pull request: %w", err)
+	}
+	return exists, nil
 }
 
 func (s *Storage) SavePullRequest(pr *models.PullRequest) {

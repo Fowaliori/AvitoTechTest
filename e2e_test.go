@@ -176,9 +176,6 @@ func TestMergePR(t *testing.T) {
 		t.Fatalf("Ожидался статус 201 при создании команды, получен %d. Тело: %s", respTeam.StatusCode, string(body))
 	}
 
-	// Небольшая задержка для гарантии сохранения в БД
-	time.Sleep(100 * time.Millisecond)
-
 	// Создаем PR
 	prID := generateID("pr")
 	prReq := map[string]interface{}{

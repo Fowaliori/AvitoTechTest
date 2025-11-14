@@ -2,6 +2,7 @@ package service
 
 import (
 	"errors"
+	"fmt"
 	"pr-reviewer/internal/db"
 	"pr-reviewer/internal/models"
 	"time"
@@ -40,18 +41,26 @@ func NewService(storage *db.Storage) *Service {
 
 // CreateTeam создает команду с участниками
 func (s *Service) CreateTeam(team *models.Team) error {
-	if s.storage.TeamExists(team.TeamName) {
-		return ErrTeamExists
+	exists, err := s.storage.TeamExists(team.TeamName)
+
+	if err != nil {
+		return fmt.Errorf("ошибка при проверке: %w", err)
 	}
 
+	if exists {
+		return ErrTeamExists
+	}
 	// Создаем/обновляем пользователей
 	for _, member := range team.Members {
-		s.storage.SaveUser(&models.User{
+		err := s.storage.SaveUser(&models.User{
 			UserId:   member.UserId,
 			Username: member.Username,
 			TeamName: team.TeamName,
 			IsActive: member.IsActive,
 		})
+		if err != nil {
+			return fmt.Errorf("ошибка при сохранении пользователя: %w", err)
+		}
 	}
 
 	s.storage.SaveTeam(team)
@@ -60,8 +69,8 @@ func (s *Service) CreateTeam(team *models.Team) error {
 
 // GetTeam получает команду
 func (s *Service) GetTeam(name string) (*models.Team, error) {
-	team, exists := s.storage.GetTeam(name)
-	if !exists {
+	team, err := s.storage.GetTeam(name)
+	if err != nil {
 		return nil, ErrTeamNotFound
 	}
 	return team, nil
@@ -69,37 +78,37 @@ func (s *Service) GetTeam(name string) (*models.Team, error) {
 
 // SetUserActive устанавливает флаг активности пользователя
 func (s *Service) SetUserActive(userId string, isActive bool) (*models.User, error) {
-	user, exists := s.storage.GetUser(userId)
-	if !exists {
+	user, err := s.storage.GetUser(userId)
+	if err != nil {
 		return nil, ErrUserNotFound
 	}
 
 	user.IsActive = isActive
-	s.storage.SaveUser(user)
+	err = s.storage.SaveUser(user)
+	if err != nil {
+		return nil, fmt.Errorf("ошибка при сохранении пользователя: %w", err)
+	}
+
 	return user, nil
 }
 
 // CreatePullRequest создает PR и автоматически назначает до 2 ревьюверов
 func (s *Service) CreatePullRequest(prId, prName, authorId string) (*models.PullRequest, error) {
-	if s.storage.PullRequestExists(prId) {
+	if _, err := s.storage.PullRequestExists(prId); err != nil {
 		return nil, ErrPRExists
 	}
 
-	author, exists := s.storage.GetUser(authorId)
-	if !exists {
+	author, err := s.storage.GetUser(authorId)
+	if err != nil {
 		return nil, ErrUserNotFound
 	}
 
-	team, exists := s.storage.GetTeam(author.TeamName)
-	if !exists {
+	team, err := s.storage.GetTeam(author.TeamName)
+	if err != nil {
 		return nil, ErrTeamNotFound
 	}
 
-	// Находим активных ревьюверов из команды (исключая автора)
 	reviewers := s.findActiveReviewers(team, authorId, 2)
-	if len(reviewers) == 0 {
-		return nil, ErrNoCandidate
-	}
 
 	now := time.Now()
 	pr := &models.PullRequest{
@@ -189,8 +198,8 @@ func (s *Service) findActiveReviewers(team *models.Team, excludeUserId string, m
 
 	for _, member := range team.Members {
 		if member.UserId != excludeUserId {
-			user, ok := s.storage.GetUser(member.UserId)
-			if ok && user.IsActive {
+			user, err := s.storage.GetUser(member.UserId)
+			if err != nil && user.IsActive {
 				reviewers = append(reviewers, member.UserId)
 				if len(reviewers) >= maxCount {
 					break
