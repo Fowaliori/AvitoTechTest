@@ -1,4 +1,4 @@
-module draft
+module pr-reviewer
 
 go 1.23.0
 

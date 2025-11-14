@@ -1,9 +1,9 @@
 package service
 
 import (
-	"draft/internal/db"
-	"draft/internal/models"
 	"errors"
+	"pr-reviewer/internal/db"
+	"pr-reviewer/internal/models"
 	"time"
 )
 

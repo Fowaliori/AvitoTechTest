@@ -1,12 +1,12 @@
 package main
 
 import (
-	"draft/internal/api"
-	"draft/internal/db"
-	"draft/internal/service"
 	"log"
 	"net/http"
 	"os"
+	"pr-reviewer/internal/api"
+	"pr-reviewer/internal/db"
+	"pr-reviewer/internal/service"
 )
 
 func main() {

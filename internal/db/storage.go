@@ -2,9 +2,9 @@ package db
 
 import (
 	"database/sql"
-	"draft/internal/models"
 	"encoding/json"
 	"fmt"
+	"pr-reviewer/internal/models"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 )

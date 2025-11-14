@@ -1,11 +1,11 @@
 package api
 
 import (
-	"draft/internal/models"
-	"draft/internal/service"
 	"encoding/json"
 	"errors"
 	"net/http"
+	"pr-reviewer/internal/models"
+	"pr-reviewer/internal/service"
 )
 
 // Server реализует сгенерированный ServerInterface

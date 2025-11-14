@@ -3,7 +3,7 @@ OAPI_CODEGEN = $(GOPATH_BIN)/oapi-codegen
 API_FILE = internal/api/api.gen.go
 MODELS_FILE = internal/models/models.gen.go
 
-all: generate
+all: generate run test-e2e
 
 generate: install-generator
 	$(OAPI_CODEGEN) -package models -generate types -o internal/models/models.gen.go openapi.yml
@@ -15,4 +15,7 @@ install-generator:
 run:
 	@docker-compose up -d
 
-.PHONY: all generate install-generator
+test-e2e:
+	@go test -v -timeout 30s ./e2e_test.go
+
+.PHONY: all generate install-generator run test-e2e
