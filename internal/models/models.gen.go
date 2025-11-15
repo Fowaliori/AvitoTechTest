@@ -7,11 +7,6 @@ import (
 	"time"
 )
 
-const (
-	AdminTokenScopes = "AdminToken.Scopes"
-	UserTokenScopes  = "UserToken.Scopes"
-)
-
 // Defines values for ErrorResponseErrorCode.
 const (
 	NOCANDIDATE ErrorResponseErrorCode = "NO_CANDIDATE"

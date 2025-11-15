@@ -50,20 +50,11 @@ func (s *Service) CreateTeam(team *models.Team) error {
 	if exists {
 		return ErrTeamExists
 	}
-	// Создаем/обновляем пользователей
-	for _, member := range team.Members {
-		err := s.storage.SaveUser(&models.User{
-			UserId:   member.UserId,
-			Username: member.Username,
-			TeamName: team.TeamName,
-			IsActive: member.IsActive,
-		})
-		if err != nil {
-			return fmt.Errorf("ошибка при сохранении пользователя: %w", err)
-		}
-	}
 
-	s.storage.SaveTeam(team)
+	err = s.storage.SaveTeam(team)
+	if err != nil {
+		return fmt.Errorf("ошибка при сохранении команды: %w", err)
+	}
 	return nil
 }
 
@@ -71,6 +62,7 @@ func (s *Service) CreateTeam(team *models.Team) error {
 func (s *Service) GetTeam(name string) (*models.Team, error) {
 	team, err := s.storage.GetTeam(name)
 	if err != nil {
+		// TODO: надо отличать бизнесовую ошибку от ошибки БД
 		return nil, ErrTeamNotFound
 	}
 	return team, nil
@@ -80,6 +72,7 @@ func (s *Service) GetTeam(name string) (*models.Team, error) {
 func (s *Service) SetUserActive(userId string, isActive bool) (*models.User, error) {
 	user, err := s.storage.GetUser(userId)
 	if err != nil {
+		// TODO: надо отличать бизнесовую ошибку от ошибки БД
 		return nil, ErrUserNotFound
 	}
 
@@ -95,16 +88,20 @@ func (s *Service) SetUserActive(userId string, isActive bool) (*models.User, err
 // CreatePullRequest создает PR и автоматически назначает до 2 ревьюверов
 func (s *Service) CreatePullRequest(prId, prName, authorId string) (*models.PullRequest, error) {
 	if _, err := s.storage.PullRequestExists(prId); err != nil {
+		// TODO: надо отличать бизнесовую ошибку от ошибки БД
 		return nil, ErrPRExists
 	}
 
+	// TODO: лучше сразу получить команду по authorId, а не два раза ходить в БД
 	author, err := s.storage.GetUser(authorId)
 	if err != nil {
+		// надо отличать бизнесовую ошибку от ошибки БД
 		return nil, ErrUserNotFound
 	}
 
 	team, err := s.storage.GetTeam(author.TeamName)
 	if err != nil {
+		// TODO: надо отличать бизнесовую ошибку от ошибки БД
 		return nil, ErrTeamNotFound
 	}
 
@@ -120,7 +117,10 @@ func (s *Service) CreatePullRequest(prId, prName, authorId string) (*models.Pull
 		CreatedAt:         &now,
 	}
 
-	s.storage.SavePullRequest(pr)
+	err = s.storage.SavePullRequest(pr)
+	if err != nil {
+		return nil, fmt.Errorf("ошибка при сохранении PR: %w", err)
+	}
 	return pr, nil
 }
 
@@ -132,17 +132,23 @@ func (s *Service) MergePullRequest(prId string) (*models.PullRequest, error) {
 	}
 
 	// Идемпотентная операция
-	if pr.Status != models.PullRequestStatusMERGED {
-		now := time.Now()
-		pr.Status = models.PullRequestStatusMERGED
-		pr.MergedAt = &now
-		s.storage.SavePullRequest(pr)
+	if pr.Status == models.PullRequestStatusMERGED {
+		return pr, nil
+	}
+
+	now := time.Now()
+	pr.Status = models.PullRequestStatusMERGED
+	pr.MergedAt = &now
+	err := s.storage.SavePullRequest(pr)
+	if err != nil {
+		return nil, fmt.Errorf("ошибка при сохранении PR: %w", err)
 	}
 
 	return pr, nil
 }
 
 // ReassignReviewer переназначает ревьювера
+// TODO: убрать newReviewerId
 func (s *Service) ReassignReviewer(prId, oldReviewerId, newReviewerId string) (*models.PullRequest, error) {
 	pr, exists := s.storage.GetPullRequest(prId)
 	if !exists {
@@ -167,7 +173,10 @@ func (s *Service) ReassignReviewer(prId, oldReviewerId, newReviewerId string) (*
 		return nil, ErrReviewerNotAssigned
 	}
 
-	s.storage.SavePullRequest(pr)
+	err := s.storage.SavePullRequest(pr)
+	if err != nil {
+		return nil, fmt.Errorf("ошибка при сохранении PR: %w", err)
+	}
 	return pr, nil
 }
 
@@ -175,18 +184,13 @@ func (s *Service) ReassignReviewer(prId, oldReviewerId, newReviewerId string) (*
 func (s *Service) GetUserPullRequests(userId string) []models.PullRequestShort {
 	var result []models.PullRequestShort
 
-	for _, pr := range s.storage.GetAllPullRequests() {
-		for _, reviewerId := range pr.AssignedReviewers {
-			if reviewerId == userId {
-				result = append(result, models.PullRequestShort{
-					PullRequestId:   pr.PullRequestId,
-					PullRequestName: pr.PullRequestName,
-					AuthorId:        pr.AuthorId,
-					Status:          models.PullRequestShortStatus(pr.Status),
-				})
-				break
-			}
-		}
+	for _, pr := range s.storage.GetPullRequestsByReviewer(userId) {
+		result = append(result, models.PullRequestShort{
+			PullRequestId:   pr.PullRequestId,
+			PullRequestName: pr.PullRequestName,
+			AuthorId:        pr.AuthorId,
+			Status:          models.PullRequestShortStatus(pr.Status),
+		})
 	}
 
 	return result
@@ -198,8 +202,8 @@ func (s *Service) findActiveReviewers(team *models.Team, excludeUserId string, m
 
 	for _, member := range team.Members {
 		if member.UserId != excludeUserId {
-			user, err := s.storage.GetUser(member.UserId)
-			if err != nil && user.IsActive {
+			// TODO: зачем снова идти в бд?
+			if member.IsActive {
 				reviewers = append(reviewers, member.UserId)
 				if len(reviewers) >= maxCount {
 					break

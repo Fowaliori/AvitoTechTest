@@ -29,7 +29,7 @@ func TestCreateTeam(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Ошибка запроса: %v", err)
 	}
-	defer resp.Body.Close()
+	defer resp.Body.Close() //nolint:errcheck
 
 	if resp.StatusCode != http.StatusCreated {
 		body, _ := io.ReadAll(resp.Body)
@@ -70,7 +70,7 @@ func TestGetTeam(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Ошибка запроса: %v", err)
 	}
-	defer resp.Body.Close()
+	defer resp.Body.Close() //nolint:errcheck
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
@@ -120,7 +120,8 @@ func TestCreatePRWithAutoReviewers(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Ошибка запроса: %v", err)
 	}
-	defer resp.Body.Close()
+
+	defer resp.Body.Close() //nolint:errcheck
 
 	if resp.StatusCode != http.StatusCreated {
 		body, _ := io.ReadAll(resp.Body)
@@ -169,7 +170,7 @@ func TestMergePR(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Ошибка создания команды: %v", err)
 	}
-	defer respTeam.Body.Close()
+	defer respTeam.Body.Close() //nolint:errcheck
 
 	if respTeam.StatusCode != http.StatusCreated {
 		body, _ := io.ReadAll(respTeam.Body)
@@ -188,7 +189,7 @@ func TestMergePR(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Ошибка создания PR: %v", err)
 	}
-	defer respCreate.Body.Close()
+	defer respCreate.Body.Close() //nolint:errcheck
 
 	if respCreate.StatusCode != http.StatusCreated {
 		body, _ := io.ReadAll(respCreate.Body)
@@ -204,7 +205,7 @@ func TestMergePR(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Ошибка запроса: %v", err)
 	}
-	defer resp.Body.Close()
+	defer resp.Body.Close() //nolint:errcheck
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
@@ -226,7 +227,7 @@ func TestMergePR(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Ошибка повторного merge: %v", err)
 	}
-	defer resp2.Body.Close()
+	defer resp2.Body.Close() //nolint:errcheck
 
 	if resp2.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp2.Body)
@@ -267,11 +268,13 @@ func TestReassignReviewer(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Ошибка создания PR: %v", err)
 	}
-	defer resp.Body.Close()
+	defer resp.Body.Close() //nolint:errcheck
 
 	// Получаем список ревьюверов
 	var createResult map[string]interface{}
-	json.NewDecoder(resp.Body).Decode(&createResult)
+	if err := json.NewDecoder(resp.Body).Decode(&createResult); err != nil {
+		t.Fatalf("Ошибка декодирования ответа: %v", err)
+	}
 	pr := createResult["pull_request"].(map[string]interface{})
 	reviewers := pr["assigned_reviewers"].([]interface{})
 
@@ -292,7 +295,7 @@ func TestReassignReviewer(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Ошибка запроса: %v", err)
 	}
-	defer resp2.Body.Close()
+	defer resp2.Body.Close() //nolint:errcheck
 
 	if resp2.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp2.Body)
@@ -353,11 +356,13 @@ func TestCannotReassignAfterMerge(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Ошибка создания PR: %v", err)
 	}
-	defer resp.Body.Close()
+	defer resp.Body.Close() //nolint:errcheck
 
 	// Получаем список ревьюверов
 	var createResult map[string]interface{}
-	json.NewDecoder(resp.Body).Decode(&createResult)
+	if err := json.NewDecoder(resp.Body).Decode(&createResult); err != nil {
+		t.Fatalf("Ошибка декодирования ответа: %v", err)
+	}
 	pr := createResult["pull_request"].(map[string]interface{})
 	reviewers := pr["assigned_reviewers"].([]interface{})
 
@@ -388,14 +393,16 @@ func TestCannotReassignAfterMerge(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Ошибка запроса: %v", err)
 	}
-	defer resp2.Body.Close()
+	defer resp2.Body.Close() //nolint:errcheck
 
 	if resp2.StatusCode == http.StatusOK {
 		t.Fatal("Переназначение после merge должно быть запрещено")
 	}
 
 	var errorResult map[string]interface{}
-	json.NewDecoder(resp2.Body).Decode(&errorResult)
+	if err := json.NewDecoder(resp2.Body).Decode(&errorResult); err != nil {
+		t.Fatalf("Ошибка декодирования ответа: %v", err)
+	}
 	errorObj := errorResult["error"].(map[string]interface{})
 	if errorObj["code"] != "PR_MERGED" {
 		t.Fatalf("Ожидалась ошибка PR_MERGED, получена: %v", errorObj["code"])
@@ -435,7 +442,7 @@ func TestInactiveUsersNotAssigned(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Ошибка запроса: %v", err)
 	}
-	defer resp.Body.Close()
+	defer resp.Body.Close() //nolint:errcheck
 
 	if resp.StatusCode != http.StatusCreated {
 		body, _ := io.ReadAll(resp.Body)
@@ -512,7 +519,7 @@ func TestGetUserPullRequests(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Ошибка запроса: %v", err)
 	}
-	defer resp.Body.Close()
+	defer resp.Body.Close() //nolint:errcheck
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
@@ -566,7 +573,7 @@ func TestSetUserActive(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Ошибка запроса: %v", err)
 	}
-	defer resp.Body.Close()
+	defer resp.Body.Close() //nolint:errcheck
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)

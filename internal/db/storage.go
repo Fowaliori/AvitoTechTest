@@ -42,20 +42,29 @@ func (s *Storage) TeamExists(name string) (bool, error) {
 	return exists, nil
 }
 
-func (s *Storage) SaveTeam(team *models.Team) {
+func (s *Storage) SaveTeam(team *models.Team) error {
 	tx, err := s.db.Begin()
 	if err != nil {
-		return
+		return fmt.Errorf("ошибка начала транзакции: %w", err)
 	}
-	defer tx.Commit()
+	// Откатываем, если err != nil к моменту выхода из функции (или коммит не удался)
+	defer func() {
+		if err != nil {
+			_ = tx.Rollback()
+		}
+	}()
 
-	_, _ = tx.Exec(`INSERT INTO teams (team_name) VALUES ($1) ON CONFLICT (team_name) DO NOTHING`, team.TeamName)
+	if _, err = tx.Exec(`INSERT INTO teams (team_name) VALUES ($1) ON CONFLICT (team_name) DO NOTHING`, team.TeamName); err != nil {
+		return fmt.Errorf("ошибка вставки команды: %w", err)
+	}
 
 	// Удалим старых участников, чтобы пересоздать
-	_, _ = tx.Exec(`DELETE FROM users WHERE team_name=$1`, team.TeamName)
+	if _, err = tx.Exec(`DELETE FROM users WHERE team_name=$1`, team.TeamName); err != nil {
+		return fmt.Errorf("ошибка удаления предыдущих участников: %w", err)
+	}
 
 	for _, m := range team.Members {
-		_, _ = tx.Exec(`
+		if _, err = tx.Exec(`
 			INSERT INTO users (user_id, username, team_name, is_active)
 			VALUES ($1, $2, $3, $4)
 			ON CONFLICT (user_id) DO UPDATE SET
@@ -63,8 +72,16 @@ func (s *Storage) SaveTeam(team *models.Team) {
 				team_name=EXCLUDED.team_name,
 				is_active=EXCLUDED.is_active`,
 			m.UserId, m.Username, team.TeamName, m.IsActive,
-		)
+		); err != nil {
+			return fmt.Errorf("ошибка вставки участника (user_id=%s): %w", m.UserId, err)
+		}
 	}
+
+	if err = tx.Commit(); err != nil {
+		return fmt.Errorf("ошибка коммита транзакции: %w", err)
+	}
+
+	return nil
 }
 
 func (s *Storage) GetTeam(name string) (*models.Team, error) {
@@ -72,7 +89,7 @@ func (s *Storage) GetTeam(name string) (*models.Team, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer rows.Close() //nolint:errcheck
 
 	var members []models.TeamMember
 	for rows.Next() {
@@ -85,10 +102,6 @@ func (s *Storage) GetTeam(name string) (*models.Team, error) {
 
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("ошибка при чтении строк: %w", err)
-	}
-
-	if len(members) == 0 {
-		return nil, fmt.Errorf("в команде %s нет участников", name)
 	}
 
 	return &models.Team{
@@ -146,17 +159,22 @@ func (s *Storage) PullRequestExists(id string) (bool, error) {
 	return exists, nil
 }
 
-func (s *Storage) SavePullRequest(pr *models.PullRequest) {
+// TODO: делать rollback если err != nil
+func (s *Storage) SavePullRequest(pr *models.PullRequest) error {
 	tx, err := s.db.Begin()
 	if err != nil {
-		return
+		return fmt.Errorf("ошибка начала транзакции: %w", err)
 	}
-	defer tx.Commit()
+	defer func() {
+		if err != nil {
+			_ = tx.Rollback()
+		}
+	}()
 
 	// сериализуем массив ревьюверов в JSONB
 	reviewersJSON, _ := json.Marshal(pr.AssignedReviewers)
 
-	_, _ = tx.Exec(`
+	if _, err = tx.Exec(`
 		INSERT INTO pull_requests (
 			pull_request_id, pull_request_name, author_id,
 			assigned_reviewers, status, created_at, merged_at
@@ -169,7 +187,15 @@ func (s *Storage) SavePullRequest(pr *models.PullRequest) {
 			merged_at=EXCLUDED.merged_at`,
 		pr.PullRequestId, pr.PullRequestName, pr.AuthorId,
 		reviewersJSON, pr.Status, pr.CreatedAt, pr.MergedAt,
-	)
+	); err != nil {
+		return fmt.Errorf("ошибка создания PR: %w", err)
+	}
+
+	if err = tx.Commit(); err != nil {
+		return fmt.Errorf("ошибка коммита транзакции: %w", err)
+	}
+
+	return nil
 }
 
 func (s *Storage) GetPullRequest(id string) (*models.PullRequest, bool) {
@@ -188,26 +214,44 @@ func (s *Storage) GetPullRequest(id string) (*models.PullRequest, bool) {
 		return nil, false
 	}
 
-	_ = json.Unmarshal(reviewersJSON, &pr.AssignedReviewers)
-
+	err := json.Unmarshal(reviewersJSON, &pr.AssignedReviewers)
+	if err != nil {
+		return nil, false
+	}
 	return &pr, true
 }
 
-func (s *Storage) GetAllPullRequests() []models.PullRequest {
-	rows, err := s.db.Query(`SELECT pull_request_id FROM pull_requests`)
+func (s *Storage) GetPullRequestsByReviewer(userId string) []models.PullRequest {
+	var pullRequests []models.PullRequest
+
+	rows, err := s.db.Query(`
+        SELECT pull_request_id, pull_request_name, author_id,
+               assigned_reviewers, status
+        FROM pull_requests 
+        WHERE jsonb_exists(assigned_reviewers::jsonb, $1)`, userId)
 	if err != nil {
 		return nil
 	}
 	defer rows.Close()
 
-	var result []models.PullRequest
 	for rows.Next() {
-		var id string
-		_ = rows.Scan(&id)
-		pr, ok := s.GetPullRequest(id)
-		if ok {
-			result = append(result, *pr)
+		var pr models.PullRequest
+		var reviewersJSON []byte
+
+		if err := rows.Scan(
+			&pr.PullRequestId, &pr.PullRequestName, &pr.AuthorId,
+			&reviewersJSON, &pr.Status,
+		); err != nil {
+			continue
 		}
+
+		if err := json.Unmarshal(reviewersJSON, &pr.AssignedReviewers); err != nil {
+			continue
+		}
+
+		pullRequests = append(pullRequests, pr)
 	}
-	return result
+
+	return pullRequests
 }
+

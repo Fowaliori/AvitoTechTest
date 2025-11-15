@@ -13,7 +13,7 @@ install-generator:
 	@CGO_ENABLED=0 GOOS=$(shell go env GOOS) GOARCH=$(shell go env GOARCH) go install github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@latest
 
 run:
-	@docker-compose up -d
+	@docker-compose up --force-recreate -d
 
 test-e2e:
 	@go test -v -timeout 30s ./e2e_test.go

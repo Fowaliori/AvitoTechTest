@@ -6,17 +6,11 @@
 package api
 
 import (
-	"context"
 	"fmt"
 	"net/http"
 	"time"
 
 	"github.com/oapi-codegen/runtime"
-)
-
-const (
-	AdminTokenScopes = "AdminToken.Scopes"
-	UserTokenScopes  = "UserToken.Scopes"
 )
 
 // Defines values for ErrorResponseErrorCode.
@@ -193,12 +187,6 @@ type MiddlewareFunc func(http.Handler) http.Handler
 // PostPullRequestCreate operation middleware
 func (siw *ServerInterfaceWrapper) PostPullRequestCreate(w http.ResponseWriter, r *http.Request) {
 
-	ctx := r.Context()
-
-	ctx = context.WithValue(ctx, AdminTokenScopes, []string{})
-
-	r = r.WithContext(ctx)
-
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PostPullRequestCreate(w, r)
 	}))
@@ -213,12 +201,6 @@ func (siw *ServerInterfaceWrapper) PostPullRequestCreate(w http.ResponseWriter, 
 // PostPullRequestMerge operation middleware
 func (siw *ServerInterfaceWrapper) PostPullRequestMerge(w http.ResponseWriter, r *http.Request) {
 
-	ctx := r.Context()
-
-	ctx = context.WithValue(ctx, AdminTokenScopes, []string{})
-
-	r = r.WithContext(ctx)
-
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PostPullRequestMerge(w, r)
 	}))
@@ -232,12 +214,6 @@ func (siw *ServerInterfaceWrapper) PostPullRequestMerge(w http.ResponseWriter, r
 
 // PostPullRequestReassign operation middleware
 func (siw *ServerInterfaceWrapper) PostPullRequestReassign(w http.ResponseWriter, r *http.Request) {
-
-	ctx := r.Context()
-
-	ctx = context.WithValue(ctx, AdminTokenScopes, []string{})
-
-	r = r.WithContext(ctx)
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PostPullRequestReassign(w, r)
@@ -268,14 +244,6 @@ func (siw *ServerInterfaceWrapper) PostTeamAdd(w http.ResponseWriter, r *http.Re
 func (siw *ServerInterfaceWrapper) GetTeamGet(w http.ResponseWriter, r *http.Request) {
 
 	var err error
-
-	ctx := r.Context()
-
-	ctx = context.WithValue(ctx, AdminTokenScopes, []string{})
-
-	ctx = context.WithValue(ctx, UserTokenScopes, []string{})
-
-	r = r.WithContext(ctx)
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params GetTeamGetParams
@@ -311,14 +279,6 @@ func (siw *ServerInterfaceWrapper) GetUsersGetReview(w http.ResponseWriter, r *h
 
 	var err error
 
-	ctx := r.Context()
-
-	ctx = context.WithValue(ctx, AdminTokenScopes, []string{})
-
-	ctx = context.WithValue(ctx, UserTokenScopes, []string{})
-
-	r = r.WithContext(ctx)
-
 	// Parameter object where we will unmarshal all parameters from the context
 	var params GetUsersGetReviewParams
 
@@ -350,12 +310,6 @@ func (siw *ServerInterfaceWrapper) GetUsersGetReview(w http.ResponseWriter, r *h
 
 // PostUsersSetIsActive operation middleware
 func (siw *ServerInterfaceWrapper) PostUsersSetIsActive(w http.ResponseWriter, r *http.Request) {
-
-	ctx := r.Context()
-
-	ctx = context.WithValue(ctx, AdminTokenScopes, []string{})
-
-	r = r.WithContext(ctx)
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PostUsersSetIsActive(w, r)
