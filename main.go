@@ -4,6 +4,8 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
+
 	"pr-reviewer/internal/api"
 	"pr-reviewer/internal/db"
 	"pr-reviewer/internal/service"
@@ -30,6 +32,13 @@ func main() {
 		port = "8080"
 	}
 
+	srv := &http.Server{
+		Addr:         ":" + port,
+		Handler:      handler,
+		ReadTimeout:  15 * time.Second,
+		WriteTimeout: 15 * time.Second,
+		IdleTimeout:  60 * time.Second,
+	}
 	log.Printf("Server listening on :%s", port)
-	log.Fatal(http.ListenAndServe(":"+port, handler))
+	log.Fatal(srv.ListenAndServe())
 }

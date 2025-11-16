@@ -112,8 +112,7 @@ func (s *Server) PostPullRequestMerge(w http.ResponseWriter, r *http.Request) {
 func (s *Server) PostPullRequestReassign(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		PullRequestId string `json:"pull_request_id"`
-		OldReviewerId string `json:"old_reviewer_id"`
-		NewReviewerId string `json:"new_reviewer_id"`
+		OldUserId     string `json:"old_user_id"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -121,26 +120,33 @@ func (s *Server) PostPullRequestReassign(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	pr, err := s.service.ReassignReviewer(req.PullRequestId, req.OldReviewerId, req.NewReviewerId)
+	pr, replacedBy, err := s.service.ReassignReviewer(req.PullRequestId, req.OldUserId)
 	if err != nil {
 		handleError(w, err)
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]*models.PullRequest{"pull_request": pr})
+	writeJSON(w, http.StatusOK, map[string]any{
+		"pr":          pr,
+		"replaced_by": replacedBy,
+	})
 }
 
 // GetUsersGetReview получает PR'ы, где пользователь назначен ревьювером
 func (s *Server) GetUsersGetReview(w http.ResponseWriter, r *http.Request, params GetUsersGetReviewParams) {
-	prs := s.service.GetUserPullRequests(params.UserId)
+	prs, err := s.service.GetUserPullRequests(params.UserId)
+	if err != nil {
+		handleError(w, err)
+		return
+	}
 
-	writeJSON(w, http.StatusOK, map[string]interface{}{
+	writeJSON(w, http.StatusOK, map[string]any{
 		"user_id":       params.UserId,
 		"pull_requests": prs,
 	})
 }
 
-func writeJSON(w http.ResponseWriter, status int, v interface{}) {
+func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(v)
@@ -161,9 +167,14 @@ func writeError(w http.ResponseWriter, status int, code models.ErrorResponseErro
 func handleError(w http.ResponseWriter, err error) {
 	var serviceErr *service.ServiceError
 	if errors.As(err, &serviceErr) {
-		status := http.StatusBadRequest
-		if serviceErr.Code == models.NOTFOUND {
+		var status int
+		switch serviceErr.Code {
+		case models.NOTFOUND:
 			status = http.StatusNotFound
+		case models.PRMERGED, models.NOTASSIGNED, models.NOCANDIDATE:
+			status = http.StatusConflict
+		default:
+			status = http.StatusBadRequest
 		}
 		writeError(w, status, serviceErr.Code, serviceErr.Message)
 		return

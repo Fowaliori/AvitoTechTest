@@ -3,19 +3,25 @@ OAPI_CODEGEN = $(GOPATH_BIN)/oapi-codegen
 API_FILE = internal/api/api.gen.go
 MODELS_FILE = internal/models/models.gen.go
 
-all: generate run test-e2e
+all: generate linter run
 
-generate: install-generator
-	$(OAPI_CODEGEN) -package models -generate types -o internal/models/models.gen.go openapi.yml
-	$(OAPI_CODEGEN) -config oapi-config.yaml -o internal/api/api.gen.go openapi.yml
+generate: install-tools
+	$(GOPATH_BIN)/oapi-codegen -package models -generate types -o internal/models/models.gen.go openapi.yml
+	$(GOPATH_BIN)/oapi-codegen -config oapi-config.yaml -o internal/api/api.gen.go openapi.yml
 
-install-generator:
+install-tools:
 	@CGO_ENABLED=0 GOOS=$(shell go env GOOS) GOARCH=$(shell go env GOARCH) go install github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@latest
+	@go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.6.2
+	@CGO_ENABLED=0 GOOS=$(shell go env GOOS) GOARCH=$(shell go env GOARCH) go install github.com/tsenart/vegeta/v12@v12.11.1
+
 
 run:
-	@docker-compose up --force-recreate -d
-
+	@docker-compose up --build -d
+	
 test-e2e:
-	@go test -v -timeout 30s ./e2e_test.go
+	@go test -v ./e2e_test.go
 
-.PHONY: all generate install-generator run test-e2e
+linter:
+	@$(GOPATH_BIN)/golangci-lint run
+
+.PHONY: all generate install-tools run test-e2e linter 

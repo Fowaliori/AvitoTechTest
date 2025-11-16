@@ -3,6 +3,7 @@ package service
 import (
 	"errors"
 	"fmt"
+	"math/rand"
 	"pr-reviewer/internal/db"
 	"pr-reviewer/internal/models"
 	"time"
@@ -60,9 +61,11 @@ func (s *Service) CreateTeam(team *models.Team) error {
 
 // GetTeam получает команду
 func (s *Service) GetTeam(name string) (*models.Team, error) {
-	team, err := s.storage.GetTeam(name)
+	team, found, err := s.storage.GetTeam(name)
 	if err != nil {
-		// TODO: надо отличать бизнесовую ошибку от ошибки БД
+		return nil, fmt.Errorf("ошибка при получении команды: %w", err)
+	}
+	if !found {
 		return nil, ErrTeamNotFound
 	}
 	return team, nil
@@ -70,9 +73,11 @@ func (s *Service) GetTeam(name string) (*models.Team, error) {
 
 // SetUserActive устанавливает флаг активности пользователя
 func (s *Service) SetUserActive(userId string, isActive bool) (*models.User, error) {
-	user, err := s.storage.GetUser(userId)
+	user, found, err := s.storage.GetUser(userId)
 	if err != nil {
-		// TODO: надо отличать бизнесовую ошибку от ошибки БД
+		return nil, fmt.Errorf("ошибка при получении пользователя: %w", err)
+	}
+	if !found {
 		return nil, ErrUserNotFound
 	}
 
@@ -87,22 +92,20 @@ func (s *Service) SetUserActive(userId string, isActive bool) (*models.User, err
 
 // CreatePullRequest создает PR и автоматически назначает до 2 ревьюверов
 func (s *Service) CreatePullRequest(prId, prName, authorId string) (*models.PullRequest, error) {
-	if _, err := s.storage.PullRequestExists(prId); err != nil {
-		// TODO: надо отличать бизнесовую ошибку от ошибки БД
+	exists, err := s.storage.PullRequestExists(prId)
+	if err != nil {
+		return nil, fmt.Errorf("ошибка при проверке существования PR: %w", err)
+	}
+	if exists {
 		return nil, ErrPRExists
 	}
 
-	// TODO: лучше сразу получить команду по authorId, а не два раза ходить в БД
-	author, err := s.storage.GetUser(authorId)
+	team, found, err := s.storage.GetTeamByUserId(authorId)
 	if err != nil {
-		// надо отличать бизнесовую ошибку от ошибки БД
-		return nil, ErrUserNotFound
+		return nil, fmt.Errorf("ошибка при получении команды: %w", err)
 	}
-
-	team, err := s.storage.GetTeam(author.TeamName)
-	if err != nil {
-		// TODO: надо отличать бизнесовую ошибку от ошибки БД
-		return nil, ErrTeamNotFound
+	if !found {
+		return nil, ErrUserNotFound
 	}
 
 	reviewers := s.findActiveReviewers(team, authorId, 2)
@@ -117,8 +120,7 @@ func (s *Service) CreatePullRequest(prId, prName, authorId string) (*models.Pull
 		CreatedAt:         &now,
 	}
 
-	err = s.storage.SavePullRequest(pr)
-	if err != nil {
+	if err := s.storage.SavePullRequest(pr); err != nil {
 		return nil, fmt.Errorf("ошибка при сохранении PR: %w", err)
 	}
 	return pr, nil
@@ -126,12 +128,14 @@ func (s *Service) CreatePullRequest(prId, prName, authorId string) (*models.Pull
 
 // MergePullRequest помечает PR как MERGED
 func (s *Service) MergePullRequest(prId string) (*models.PullRequest, error) {
-	pr, exists := s.storage.GetPullRequest(prId)
-	if !exists {
+	pr, found, err := s.storage.GetPullRequest(prId)
+	if err != nil {
+		return nil, fmt.Errorf("ошибка при получении PR: %w", err)
+	}
+	if !found {
 		return nil, ErrPRNotFound
 	}
 
-	// Идемпотентная операция
 	if pr.Status == models.PullRequestStatusMERGED {
 		return pr, nil
 	}
@@ -139,52 +143,74 @@ func (s *Service) MergePullRequest(prId string) (*models.PullRequest, error) {
 	now := time.Now()
 	pr.Status = models.PullRequestStatusMERGED
 	pr.MergedAt = &now
-	err := s.storage.SavePullRequest(pr)
-	if err != nil {
+	if err := s.storage.SavePullRequest(pr); err != nil {
 		return nil, fmt.Errorf("ошибка при сохранении PR: %w", err)
 	}
 
 	return pr, nil
 }
 
-// ReassignReviewer переназначает ревьювера
-// TODO: убрать newReviewerId
-func (s *Service) ReassignReviewer(prId, oldReviewerId, newReviewerId string) (*models.PullRequest, error) {
-	pr, exists := s.storage.GetPullRequest(prId)
-	if !exists {
-		return nil, ErrPRNotFound
+// ReassignReviewer переназначает ревьювера на случайного активного участника из команды заменяемого ревьювера
+func (s *Service) ReassignReviewer(prId, oldReviewerId string) (*models.PullRequest, string, error) {
+	pr, found, err := s.storage.GetPullRequest(prId)
+	if err != nil {
+		return nil, "", fmt.Errorf("ошибка при получении PR: %w", err)
+	}
+	if !found {
+		return nil, "", ErrPRNotFound
 	}
 
 	if pr.Status == models.PullRequestStatusMERGED {
-		return nil, ErrPRMerged
+		return nil, "", ErrPRMerged
 	}
 
-	// Ищем и заменяем ревьювера
-	found := false
+	reviewerFound := false
+	var foundIndex int
 	for i, reviewerId := range pr.AssignedReviewers {
 		if reviewerId == oldReviewerId {
-			pr.AssignedReviewers[i] = newReviewerId
-			found = true
+			reviewerFound = true
+			foundIndex = i
 			break
 		}
 	}
 
-	if !found {
-		return nil, ErrReviewerNotAssigned
+	if !reviewerFound {
+		return nil, "", ErrReviewerNotAssigned
 	}
 
-	err := s.storage.SavePullRequest(pr)
+	team, teamFound, err := s.storage.GetTeamByUserId(oldReviewerId)
 	if err != nil {
-		return nil, fmt.Errorf("ошибка при сохранении PR: %w", err)
+		return nil, "", fmt.Errorf("ошибка при получении команды ревьювера: %w", err)
 	}
-	return pr, nil
+	if !teamFound {
+		return nil, "", ErrUserNotFound
+	}
+
+	newReviewerId := s.findRandomActiveReviewer(team, append([]string{pr.AuthorId}, pr.AssignedReviewers...))
+	if newReviewerId == "" {
+		return nil, "", ErrNoCandidate
+	}
+
+	// Заменяем ревьювера
+	pr.AssignedReviewers[foundIndex] = newReviewerId
+
+	if err := s.storage.SavePullRequest(pr); err != nil {
+		return nil, "", fmt.Errorf("ошибка при сохранении PR: %w", err)
+	}
+
+	return pr, newReviewerId, nil
 }
 
 // GetUserPullRequests получает PR'ы, где пользователь назначен ревьювером
-func (s *Service) GetUserPullRequests(userId string) []models.PullRequestShort {
+func (s *Service) GetUserPullRequests(userId string) ([]models.PullRequestShort, error) {
 	var result []models.PullRequestShort
 
-	for _, pr := range s.storage.GetPullRequestsByReviewer(userId) {
+	prs, err := s.storage.GetPullRequestsByReviewer(userId)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, pr := range prs {
 		result = append(result, models.PullRequestShort{
 			PullRequestId:   pr.PullRequestId,
 			PullRequestName: pr.PullRequestName,
@@ -193,26 +219,57 @@ func (s *Service) GetUserPullRequests(userId string) []models.PullRequestShort {
 		})
 	}
 
+	return result, nil
+}
+
+// findActiveReviewers выбирает до maxCount случайных активных ревьюверов из команды (исключая автора)
+func (s *Service) findActiveReviewers(team *models.Team, excludeUserId string, maxCount int) []string {
+	var candidates []string
+	for _, member := range team.Members {
+		if member.UserId != excludeUserId && member.IsActive {
+			candidates = append(candidates, member.UserId)
+		}
+	}
+	if len(candidates) <= maxCount {
+		return candidates
+	}
+
+	indexMap := make(map[int]struct{})
+	for len(indexMap) < maxCount {
+		idx := rand.Intn(len(candidates))
+		indexMap[idx] = struct{}{}
+	}
+	var result []string
+	for idx := range indexMap {
+		result = append(result, candidates[idx])
+	}
 	return result
 }
 
-// findActiveReviewers находит активных ревьюверов из команды (исключая автора)
-func (s *Service) findActiveReviewers(team *models.Team, excludeUserId string, maxCount int) []string {
-	var reviewers []string
-
+// findRandomActiveReviewer находит случайного активного участника из команды (исключая уже назначенных ревьюверов)
+func (s *Service) findRandomActiveReviewer(team *models.Team, excludeReviewers []string) string {
+	var candidates []string
 	for _, member := range team.Members {
-		if member.UserId != excludeUserId {
-			// TODO: зачем снова идти в бд?
-			if member.IsActive {
-				reviewers = append(reviewers, member.UserId)
-				if len(reviewers) >= maxCount {
-					break
-				}
+		if !member.IsActive {
+			continue
+		}
+		excluded := false
+		for _, reviewerId := range excludeReviewers {
+			if member.UserId == reviewerId {
+				excluded = true
+				break
 			}
+		}
+		if !excluded {
+			candidates = append(candidates, member.UserId)
 		}
 	}
 
-	return reviewers
+	if len(candidates) == 0 {
+		return ""
+	}
+
+	return candidates[rand.Intn(len(candidates))] //nolint:gosec
 }
 
 // IsServiceError проверяет, является ли ошибка ServiceError
