@@ -241,7 +241,7 @@ func (s *Service) findActiveReviewers(team *models.Team, excludeUserId string, m
 
 	indexMap := make(map[int]struct{})
 	for len(indexMap) < maxCount {
-		idx := rand.Intn(len(candidates))
+		idx := rand.Intn(len(candidates)) //nolint:gosec
 		indexMap[idx] = struct{}{}
 	}
 	var result []string
