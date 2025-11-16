@@ -85,7 +85,7 @@ func (s *Server) PostPullRequestCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusCreated, map[string]*models.PullRequest{"pull_request": pr})
+	writeJSON(w, http.StatusCreated, map[string]*models.PullRequest{"pr": pr})
 }
 
 // PostPullRequestMerge помечает PR как MERGED
@@ -105,7 +105,7 @@ func (s *Server) PostPullRequestMerge(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]*models.PullRequest{"pull_request": pr})
+	writeJSON(w, http.StatusOK, map[string]*models.PullRequest{"pr": pr})
 }
 
 // PostPullRequestReassign переназначает ревьювера

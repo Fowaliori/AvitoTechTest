@@ -105,11 +105,11 @@ func TestCreatePR(t *testing.T) {
 	}
 
 	var result struct {
-		PullRequest *models.PullRequest `json:"pull_request"`
+		Pr *models.PullRequest `json:"pr"`
 	}
 	json.NewDecoder(resp.Body).Decode(&result)
 
-	if len(result.PullRequest.AssignedReviewers) == 0 {
+	if len(result.Pr.AssignedReviewers) == 0 {
 		t.Fatal("no reviewers")
 	}
 }
@@ -195,11 +195,11 @@ func TestReassignReviewer(t *testing.T) {
 	defer resp.Body.Close()
 
 	var createResult struct {
-		PullRequest *models.PullRequest `json:"pull_request"`
+		Pr *models.PullRequest `json:"pr"`
 	}
 	json.NewDecoder(resp.Body).Decode(&createResult)
 
-	oldReviewerID := createResult.PullRequest.AssignedReviewers[0]
+	oldReviewerID := createResult.Pr.AssignedReviewers[0]
 
 	reassignReq := struct {
 		PullRequestId string `json:"pull_request_id"`
@@ -254,11 +254,11 @@ func TestCannotReassignAfterMerge(t *testing.T) {
 	defer resp.Body.Close()
 
 	var createResult struct {
-		PullRequest *models.PullRequest `json:"pull_request"`
+		Pr *models.PullRequest `json:"pr"`
 	}
 	json.NewDecoder(resp.Body).Decode(&createResult)
 
-	oldReviewerID := createResult.PullRequest.AssignedReviewers[0]
+	oldReviewerID := createResult.Pr.AssignedReviewers[0]
 
 	mergeReq := models.PostPullRequestMergeJSONBody{
 		PullRequestId: prID,
@@ -322,11 +322,11 @@ func TestInactiveUsersNotAssigned(t *testing.T) {
 	defer resp.Body.Close()
 
 	var result struct {
-		PullRequest *models.PullRequest `json:"pull_request"`
+		Pr *models.PullRequest `json:"pr"`
 	}
 	json.NewDecoder(resp.Body).Decode(&result)
 
-	for _, r := range result.PullRequest.AssignedReviewers {
+	for _, r := range result.Pr.AssignedReviewers {
 		if r == inactiveUser {
 			t.Fatal("inactive user assigned")
 		}
