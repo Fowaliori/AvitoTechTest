@@ -325,3 +325,36 @@ func (s *Storage) GetPullRequestsByReviewer(userId string) ([]models.PullRequest
 
 	return pullRequests, nil
 }
+
+// GetAvgReviewTimeByTeam возвращает среднее время ревью по командам авторов PR
+func (s *Storage) GetAvgReviewTimeByTeam() ([]models.TeamReviewTimeStat, error) {
+	rows, err := s.db.Query(`
+		SELECT
+			u.team_name,
+			(AVG(COALESCE(pr.merged_at, NOW()) - pr.created_at))::text AS avg_review_time,
+			COUNT(*) AS total_prs
+		FROM pull_requests pr
+		JOIN users u ON u.user_id = pr.author_id
+		WHERE pr.created_at IS NOT NULL
+		GROUP BY u.team_name
+		ORDER BY AVG(COALESCE(pr.merged_at, NOW()) - pr.created_at)
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var result []models.TeamReviewTimeStat
+	for rows.Next() {
+		var row models.TeamReviewTimeStat
+		if err := rows.Scan(&row.TeamName, &row.AvgReviewTime, &row.TotalPrs); err != nil {
+			return nil, err
+		}
+		result = append(result, row)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return result, nil
+}

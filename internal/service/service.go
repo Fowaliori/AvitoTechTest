@@ -222,6 +222,11 @@ func (s *Service) GetUserPullRequests(userId string) ([]models.PullRequestShort,
 	return result, nil
 }
 
+// GetReviewTimeStats возвращает статистику среднего времени ревью по командам
+func (s *Service) GetReviewTimeStats() ([]models.TeamReviewTimeStat, error) {
+	return s.storage.GetAvgReviewTimeByTeam()
+}
+
 // findActiveReviewers выбирает до maxCount случайных активных ревьюверов из команды (исключая автора)
 func (s *Service) findActiveReviewers(team *models.Team, excludeUserId string, maxCount int) []string {
 	var candidates []string

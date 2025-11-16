@@ -146,6 +146,18 @@ func (s *Server) GetUsersGetReview(w http.ResponseWriter, r *http.Request, param
 	})
 }
 
+// GetStatsReviewTime — эндпойнт статистики среднего времени ревью по командам.
+func (s *Server) GetStatsReviewTime(w http.ResponseWriter, r *http.Request) {
+	stats, err := s.service.GetReviewTimeStats()
+	if err != nil {
+		handleError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"stats": stats,
+	})
+}
+
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)

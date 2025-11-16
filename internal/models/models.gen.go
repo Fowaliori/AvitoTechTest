@@ -79,6 +79,16 @@ type TeamMember struct {
 	Username string `json:"username"`
 }
 
+// TeamReviewTimeStat defines model for TeamReviewTimeStat.
+type TeamReviewTimeStat struct {
+	// AvgReviewTime Среднее время ревью (interval); для OPEN используется now - created_at
+	AvgReviewTime string `json:"avg_review_time"`
+	TeamName      string `json:"team_name"`
+
+	// TotalPrs Количество PR, учтённых в расчёте
+	TotalPrs int64 `json:"total_prs"`
+}
+
 // User defines model for User.
 type User struct {
 	IsActive bool   `json:"is_active"`

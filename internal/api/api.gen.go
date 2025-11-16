@@ -85,6 +85,16 @@ type TeamMember struct {
 	Username string `json:"username"`
 }
 
+// TeamReviewTimeStat defines model for TeamReviewTimeStat.
+type TeamReviewTimeStat struct {
+	// AvgReviewTime Среднее время ревью (interval); для OPEN используется now - created_at
+	AvgReviewTime string `json:"avg_review_time"`
+	TeamName      string `json:"team_name"`
+
+	// TotalPrs Количество PR, учтённых в расчёте
+	TotalPrs int64 `json:"total_prs"`
+}
+
 // User defines model for User.
 type User struct {
 	IsActive bool   `json:"is_active"`
@@ -161,6 +171,9 @@ type ServerInterface interface {
 	// Переназначить конкретного ревьювера на другого из его команды
 	// (POST /pullRequest/reassign)
 	PostPullRequestReassign(w http.ResponseWriter, r *http.Request)
+	// Среднее время ревью по командам
+	// (GET /stats/reviewTime)
+	GetStatsReviewTime(w http.ResponseWriter, r *http.Request)
 	// Создать команду с участниками (создаёт/обновляет пользователей)
 	// (POST /team/add)
 	PostTeamAdd(w http.ResponseWriter, r *http.Request)
@@ -217,6 +230,20 @@ func (siw *ServerInterfaceWrapper) PostPullRequestReassign(w http.ResponseWriter
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PostPullRequestReassign(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetStatsReviewTime operation middleware
+func (siw *ServerInterfaceWrapper) GetStatsReviewTime(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetStatsReviewTime(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -445,6 +472,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc("POST "+options.BaseURL+"/pullRequest/create", wrapper.PostPullRequestCreate)
 	m.HandleFunc("POST "+options.BaseURL+"/pullRequest/merge", wrapper.PostPullRequestMerge)
 	m.HandleFunc("POST "+options.BaseURL+"/pullRequest/reassign", wrapper.PostPullRequestReassign)
+	m.HandleFunc("GET "+options.BaseURL+"/stats/reviewTime", wrapper.GetStatsReviewTime)
 	m.HandleFunc("POST "+options.BaseURL+"/team/add", wrapper.PostTeamAdd)
 	m.HandleFunc("GET "+options.BaseURL+"/team/get", wrapper.GetTeamGet)
 	m.HandleFunc("GET "+options.BaseURL+"/users/getReview", wrapper.GetUsersGetReview)

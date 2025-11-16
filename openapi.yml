@@ -8,6 +8,7 @@ tags:
   - name: Users
   - name: PullRequests
   - name: Health
+  - name: Stats
 
 components:
   parameters:
@@ -120,6 +121,19 @@ components:
         status:
           type: string
           enum: [OPEN, MERGED]
+    TeamReviewTimeStat:
+      type: object
+      required: [ team_name, avg_review_time, total_prs ]
+      properties:
+        team_name:
+          type: string
+        avg_review_time:
+          type: string
+          description: Среднее время ревью (interval); для OPEN используется now - created_at
+        total_prs:
+          type: integer
+          format: int64
+          description: Количество PR, учтённых в расчёте
 
 paths:
   /team/add:
@@ -419,3 +433,30 @@ paths:
                     pull_request_name: Add search
                     author_id: u1
                     status: OPEN
+  /stats/reviewTime:
+    get:
+      tags: [Stats]
+      summary: Среднее время ревью по командам
+      description: >
+        Возвращает среднее время на ревью по командам
+      responses:
+        '200':
+          description: Статистика по командам
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ stats ]
+                properties:
+                  stats:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/TeamReviewTimeStat'
+              example:
+                stats:
+                  - team_name: frontend
+                    avg_review_time: "12:34:56"
+                    total_prs: 10
+                  - team_name: backend
+                    avg_review_time: "03:10:00"
+                    total_prs: 4
